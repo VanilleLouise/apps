@@ -1,0 +1,30 @@
+Points d'Amélioration 🔧
+Complexité excessive pour un MVP
+
+10+ tables pour un démarrage
+Trop de champs optionnels qui pourraient être ajoutés plus tard
+Architecture "tout prévu" vs approche itérative
+
+Incohérences techniques
+
+SQLite mentionné mais syntaxe MySQL/PostgreSQL dans le SQL
+Mélange de paradigmes (ENUM SQL vs choices Django)
+Pas de gestion des migrations Django
+
+
+1. Complexité Excessive pour un MVP
+
+Trop de fonctionnalités prévues dès le départ
+Architecture sur-ingénierie pour une petite association
+Risque de ne jamais finir le projet
+
+2. Incohérences Techniques
+
+Mélange SQLite/PostgreSQL sans stratégie claire
+Duplication entre SQL brut et modèles Django
+API REST complète mais sans pagination ni filtrage
+
+3. Manque de Priorisation
+
+Pas de distinction claire entre features essentielles et "nice-to-have"
+Roadmap trop ambitieuse (16 semaines)
