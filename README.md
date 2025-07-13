@@ -1,3 +1,7 @@
+Ce projet est une application de gestion pour l'association "Cultures sauvages" à Bouillante em Guadeloupe.
+
+
+
 1. Stratégie de contenu & gouvernance
 Inventaire & audit de contenu
 Textes institutionnels : historique de l’association, valeurs, projets pilotes (drive “Plan de Développement – Phases”)
