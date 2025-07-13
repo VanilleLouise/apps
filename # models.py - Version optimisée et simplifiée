@@ -1,0 +1,310 @@
+# models.py - Version optimisée et simplifiée
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.utils import timezone
+
+
+class Utilisateur(AbstractUser):
+    """Modèle utilisateur unifié avec gestion simplifiée des rôles"""
+    
+    class Role(models.TextChoices):
+        ADMIN = 'ADMIN', 'Administrateur'
+        MEMBRE = 'MEMBRE', 'Membre actif'
+        BENEVOLE = 'BENEVOLE', 'Bénévole'
+        ADHERENT = 'ADHERENT', 'Adhérent'
+    
+    # Surcharge du username par email
+    username = None
+    email = models.EmailField(unique=True)
+    
+    # Informations personnelles
+    telephone = models.CharField(max_length=20, blank=True)
+    ville = models.CharField(max_length=100, blank=True)
+    
+    # Rôle et engagement
+    role = models.CharField(
+        max_length=10,
+        choices=Role.choices,
+        default=Role.ADHERENT
+    )
+    
+    # Simplification des disponibilités en champ simple
+    disponibilites = models.TextField(
+        blank=True,
+        help_text="Décrivez vos disponibilités (ex: weekends, soirées...)"
+    )
+    competences = models.TextField(
+        blank=True,
+        help_text="Vos compétences à partager"
+    )
+    motivations = models.TextField(
+        blank=True,
+        help_text="Pourquoi rejoindre l'association ?"
+    )
+    
+    # Métadonnées
+    date_adhesion = models.DateTimeField(auto_now_add=True)
+    actif = models.BooleanField(default=True)
+    
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['first_name', 'last_name']
+    
+    class Meta:
+        db_table = 'utilisateurs'
+        verbose_name = 'Utilisateur'
+        verbose_name_plural = 'Utilisateurs'
+    
+    def __str__(self):
+        return f"{self.get_full_name()} ({self.get_role_display()})"
+    
+    @property
+    def is_organisateur(self):
+        return self.role in [self.Role.ADMIN, self.Role.MEMBRE]
+
+
+class Categorie(models.Model):
+    """Catégories d'événements simplifiées"""
+    nom = models.CharField(max_length=50, unique=True)
+    couleur = models.CharField(
+        max_length=7,
+        default='#4A90E2',
+        help_text="Code couleur hexadécimal"
+    )
+    icone = models.CharField(max_length=30, default='calendar')
+    ordre = models.IntegerField(default=0)
+    
+    class Meta:
+        db_table = 'categories'
+        ordering = ['ordre', 'nom']
+        verbose_name = 'Catégorie'
+        verbose_name_plural = 'Catégories'
+    
+    def __str__(self):
+        return self.nom
+
+
+class Evenement(models.Model):
+    """Modèle d'événement simplifié et optimisé"""
+    
+    class Statut(models.TextChoices):
+        BROUILLON = 'BROUILLON', 'Brouillon'
+        PUBLIE = 'PUBLIE', 'Publié'
+        COMPLET = 'COMPLET', 'Complet'
+        TERMINE = 'TERMINE', 'Terminé'
+        ANNULE = 'ANNULE', 'Annulé'
+    
+    # Informations de base
+    titre = models.CharField(max_length=200)
+    description = models.TextField()
+    categorie = models.ForeignKey(
+        Categorie,
+        on_delete=models.PROTECT,
+        related_name='evenements'
+    )
+    
+    # Dates et lieu
+    date_debut = models.DateTimeField()
+    date_fin = models.DateTimeField(blank=True, null=True)
+    lieu = models.CharField(max_length=200)
+    
+    # Gestion des inscriptions
+    places_max = models.PositiveIntegerField(
+        blank=True,
+        null=True,
+        help_text="Laisser vide pour illimité"
+    )
+    inscription_requise = models.BooleanField(default=True)
+    
+    # Organisation
+    organisateur = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.PROTECT,
+        related_name='evenements_organises'
+    )
+    statut = models.CharField(
+        max_length=10,
+        choices=Statut.choices,
+        default=Statut.BROUILLON
+    )
+    
+    # Métadonnées
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'evenements'
+        ordering = ['date_debut']
+        verbose_name = 'Événement'
+        verbose_name_plural = 'Événements'
+    
+    def __str__(self):
+        return f"{self.titre} - {self.date_debut.strftime('%d/%m/%Y')}"
+    
+    @property
+    def places_disponibles(self):
+        if not self.places_max:
+            return None
+        return max(0, self.places_max - self.inscriptions.filter(
+            statut=Inscription.Statut.CONFIRME
+        ).count())
+    
+    @property
+    def est_complet(self):
+        if not self.places_max:
+            return False
+        return self.places_disponibles == 0
+    
+    def save(self, *args, **kwargs):
+        # Auto-gestion du statut COMPLET
+        if self.est_complet and self.statut == self.Statut.PUBLIE:
+            self.statut = self.Statut.COMPLET
+        super().save(*args, **kwargs)
+
+
+class Inscription(models.Model):
+    """Inscriptions simplifiées avec statut clair"""
+    
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'EN_ATTENTE', 'En attente'
+        CONFIRME = 'CONFIRME', 'Confirmé'
+        ANNULE = 'ANNULE', 'Annulé'
+    
+    utilisateur = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.CASCADE,
+        related_name='inscriptions'
+    )
+    evenement = models.ForeignKey(
+        Evenement,
+        on_delete=models.CASCADE,
+        related_name='inscriptions'
+    )
+    statut = models.CharField(
+        max_length=15,
+        choices=Statut.choices,
+        default=Statut.EN_ATTENTE
+    )
+    
+    # Informations complémentaires
+    commentaire = models.TextField(blank=True)
+    date_inscription = models.DateTimeField(auto_now_add=True)
+    
+    # Feedback post-événement
+    note_satisfaction = models.IntegerField(
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
+    feedback = models.TextField(blank=True)
+    
+    class Meta:
+        db_table = 'inscriptions'
+        unique_together = ['utilisateur', 'evenement']
+        verbose_name = 'Inscription'
+        verbose_name_plural = 'Inscriptions'
+    
+    def __str__(self):
+        return f"{self.utilisateur} → {self.evenement}"
+
+
+class Projet(models.Model):
+    """Modèle simplifié pour les projets à long terme"""
+    
+    class Statut(models.TextChoices):
+        IDEE = 'IDEE', 'Idée'
+        PLANIFIE = 'PLANIFIE', 'Planifié'
+        EN_COURS = 'EN_COURS', 'En cours'
+        TERMINE = 'TERMINE', 'Terminé'
+        ARCHIVE = 'ARCHIVE', 'Archivé'
+    
+    nom = models.CharField(max_length=200)
+    description = models.TextField()
+    objectifs = models.TextField()
+    
+    responsable = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.PROTECT,
+        related_name='projets_geres'
+    )
+    categorie = models.ForeignKey(
+        Categorie,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    
+    statut = models.CharField(
+        max_length=10,
+        choices=Statut.choices,
+        default=Statut.IDEE
+    )
+    priorite = models.IntegerField(
+        default=0,
+        help_text="0=normale, 1=haute, 2=urgente"
+    )
+    
+    # Dates prévisionnelles
+    date_debut_prevue = models.DateField(blank=True, null=True)
+    date_fin_prevue = models.DateField(blank=True, null=True)
+    
+    # Suivi simple
+    avancement = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'projets'
+        ordering = ['-priorite', 'nom']
+        verbose_name = 'Projet'
+        verbose_name_plural = 'Projets'
+    
+    def __str__(self):
+        return f"{self.nom} ({self.get_statut_display()})"
+
+
+# Modèle de notification simple pour les besoins de base
+class Notification(models.Model):
+    """Notifications simples pour les utilisateurs"""
+    
+    class Type(models.TextChoices):
+        INSCRIPTION = 'INSCRIPTION', 'Inscription confirmée'
+        RAPPEL = 'RAPPEL', 'Rappel événement'
+        ANNULATION = 'ANNULATION', 'Événement annulé'
+        INFO = 'INFO', 'Information'
+    
+    destinataire = models.ForeignKey(
+        Utilisateur,
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
+    type_notif = models.CharField(
+        max_length=15,
+        choices=Type.choices
+    )
+    titre = models.CharField(max_length=200)
+    message = models.TextField()
+    lue = models.BooleanField(default=False)
+    
+    # Lien optionnel vers un événement
+    evenement = models.ForeignKey(
+        Evenement,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'notifications'
+        ordering = ['-created_at']
+        verbose_name = 'Notification'
+        verbose_name_plural = 'Notifications'
+    
+    def __str__(self):
+        return f"{self.type_notif} → {self.destinataire}"
